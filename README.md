@@ -8,7 +8,7 @@ Start:
 docker compose up -d
 ```
 
-Web UI: http://localhost:8080
+Web UI: http://localhost:8082
 Python SDK / Temporal gRPC endpoint: localhost:7233
 
 Stop (keep DB):
