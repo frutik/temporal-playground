@@ -49,7 +49,79 @@ What a namespace separates:
 
 Usual split: one namespace per environment (`review-dev`, `review-staging`, `review-prod`), or per team or product when several share a server. Namespaces are not for separating workflow types inside one app; use task queues for that.
 
-Locally, `default` is fine. Elsewhere, set `TEMPORAL_NAMESPACE` to the same value for the worker, whatever starts the workflows (e.g. the cron job) and the external embedding app: they only see each other's workflows inside one namespace.
+Locally, `default` is fine. Elsewhere, set `TEMPORAL_NAMESPACE` (CLI: `-n`, see below) to the same value for the worker, whatever starts the workflows (e.g. the cron job) and the external embedding app: they only see each other's workflows inside one namespace.
+
+## Command-line client (`temporal`)
+
+`temporal` is Temporal's CLI: a client that connects to a server over gRPC, like `psql` for Postgres. It is not the server itself (that is the `temporal` service in `compose.yaml`), except for `temporal server start-dev`, which runs a throwaway all-in-one dev server.
+
+### Install
+
+On macOS:
+
+```sh
+brew install temporal
+temporal --version
+```
+
+Without installing, use the admin-tools image this stack already has:
+
+```sh
+docker compose run --rm --no-deps --entrypoint temporal temporal-namespace-init \
+  workflow list --address temporal:7233
+```
+
+Inside the compose network the server is `temporal:7233`; from your Mac it is `localhost:7233`.
+
+### Where it connects
+
+Every command takes the same connection options; `temporal options` lists them all. Each one can be a flag, an environment variable or a config-file property:
+
+| Flag | Environment variable | Meaning |
+|---|---|---|
+| `--address` | `TEMPORAL_ADDRESS` | server host:port, default `localhost:7233` |
+| `-n`, `--namespace` | `TEMPORAL_NAMESPACE` | namespace, default `default` |
+| `--api-key` | `TEMPORAL_API_KEY` | API key auth (Temporal Cloud) |
+| `--tls` | `TEMPORAL_TLS` | enable TLS |
+| `--tls-cert-path`, `--tls-key-path` | `TEMPORAL_TLS_CLIENT_CERT_PATH`, `TEMPORAL_TLS_CLIENT_KEY_PATH` | client certificate (mTLS) |
+| `--tls-ca-path` | `TEMPORAL_TLS_SERVER_CA_CERT_PATH` | CA for a self-signed server certificate |
+| `--profile` | `TEMPORAL_PROFILE` | named profile from the config file |
+| `-o`, `--output` | | `text` (default) or `json` |
+
+The local stack needs nothing: defaults match it. For other servers, either pass flags:
+
+```sh
+temporal workflow list --address temporal.staging.internal:7233 -n review-staging
+```
+
+or export the variables once per shell:
+
+```sh
+export TEMPORAL_ADDRESS=temporal.staging.internal:7233
+export TEMPORAL_NAMESPACE=review-staging
+temporal workflow list
+```
+
+or save profiles in the CLI's TOML config file (`--config-file` / `TEMPORAL_CONFIG_FILE` to point elsewhere) and switch with `--profile`:
+
+```sh
+temporal config set --profile staging --prop address   --value temporal.staging.internal:7233
+temporal config set --profile staging --prop namespace --value review-staging
+temporal workflow list --profile staging
+```
+
+The same variables (`TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`) are what the Django sketch reads, so one environment configures both the CLI and the app.
+
+### Useful commands
+
+```sh
+temporal workflow list --query "ExecutionStatus='Running'"   # what is in flight
+temporal workflow describe -w review-dj-1                     # status, pending steps, attempts
+temporal workflow show -w review-dj-1                         # full event history
+temporal workflow terminate -w review-dj-1 --reason "stuck"   # stop it
+temporal task-queue describe --task-queue review-django       # is a worker polling?
+temporal operator namespace list                              # namespaces on the server
+```
 
 ## Review workflow: where things run
 
