@@ -27,6 +27,30 @@ No RabbitMQ, Elasticsearch or app worker is included. Temporal uses PostgreSQL f
 
 Development only: default credentials, no TLS or authentication. Temporal's Go server runs all four roles in one container.
 
+## Namespaces
+
+A namespace is an isolation boundary inside one Temporal server, much like a database inside one Postgres server: one server, several namespaces, and a client connects to exactly one (`Client.connect(..., namespace=...)`). A fresh server has none, so one must exist before any workflow can run.
+
+On startup, `scripts/create-namespace.sh` runs once in a one-off admin-tools container. It waits for the server to report healthy, then creates the `default` namespace unless it already exists:
+
+```sh
+temporal operator namespace create -n default --address "$ADDRESS" --retention 7d
+```
+
+`--retention 7d` keeps a workflow's history for 7 days after it **finishes**, then deletes it. Running or paused workflows are never deleted. Anything you need to keep long term (e.g. review decisions) belongs in your own database, written by a step.
+
+What a namespace separates:
+
+- **Names**: workflow ids and task queues are unique per namespace. `review-dj-1` in `staging` and in `prod` are unrelated, and a worker polling a queue in one namespace never gets work from another.
+- **Visibility**: the UI and list/search APIs show one namespace at a time.
+- **Settings**: retention, archival and similar options are set per namespace.
+- **Access**: with Temporal Cloud or self-hosted auth, permissions and credentials are granted per namespace.
+- **Limits**: in Temporal Cloud, rate limits and billing are per namespace.
+
+Usual split: one namespace per environment (`review-dev`, `review-staging`, `review-prod`), or per team or product when several share a server. Namespaces are not for separating workflow types inside one app; use task queues for that.
+
+Locally, `default` is fine. Elsewhere, set `TEMPORAL_NAMESPACE` to the same value for the worker, whatever starts the workflows (e.g. the cron job) and the external embedding app: they only see each other's workflows inside one namespace.
+
 ## Review workflow: where things run
 
 ### General setup
